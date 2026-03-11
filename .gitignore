@@ -1,0 +1,29 @@
+# macOS
+.DS_Store
+
+# Python cache and virtualenv
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+.coverage
+htmlcov/
+
+# Build outputs
+build/
+dist/
+
+# Xcode user data
+DerivedData/
+*.xcuserstate
+xcuserdata/
+ui/ChatFilter.xcodeproj/xcuserdata/
+ui/ChatFilter.xcodeproj/project.xcworkspace/xcuserdata/
+
+# Generated sample artifacts
+samples/generated/
+
