@@ -138,16 +138,12 @@ def main() -> int:
     print_progress(f"正在导出结果到: {args.output}")
     try:
         exporter = ChatExporter(args.output)
-        html_content = exporter.export(
+        exporter.export(
             messages=filtered_messages,
             keywords=keywords,
             mode=args.mode,
             matched_info=matched_info
         )
-
-        # 如果输出是HTML格式
-        if args.output.endswith(".html"):
-            exporter.save_html(html_content, args.output)
 
     except Exception as e:
         print(f"错误: 导出失败: {e}", file=sys.stderr)

@@ -221,6 +221,22 @@ open ChatFilterApp.xcodeproj
 7. **开始筛选**: 点击"开始筛选"按钮
 8. **查看结果**: 完成后可以在日志区域查看详情，点击"在Finder中显示"打开输出文件
 
+## 开发与打包
+
+```bash
+# 运行测试
+python3 -m pytest tests/ -v
+
+# 打包 Python 二进制
+python3 -m PyInstaller packaging/pyinstaller/chat_filter.spec --clean
+
+# 组装 macOS app bundle
+bash scripts/build_app.sh
+
+# 生成大体积测试样本（默认输出到 samples/generated/）
+python3 scripts/generate_50mb_chat.py --size-mb 50
+```
+
 ## HTML输入格式要求
 
 工具期望的HTML格式如下：

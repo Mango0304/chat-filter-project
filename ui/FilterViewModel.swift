@@ -180,8 +180,13 @@ class FilterViewModel: ObservableObject {
                 let contentsURL = appURL.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
                 projectRoot = contentsURL
             } else {
-                // Xcode开发环境：使用默认项目路径
-                projectRoot = URL(fileURLWithPath: "/Users/suriness/Documents/liamCode/chat-filter-project")
+                // Xcode开发环境：优先读取环境变量，否则基于当前源文件路径推断仓库根目录
+                if let envRoot = ProcessInfo.processInfo.environment["CHAT_FILTER_PROJECT_ROOT"], !envRoot.isEmpty {
+                    projectRoot = URL(fileURLWithPath: envRoot)
+                } else {
+                    let sourceFileURL = URL(fileURLWithPath: #filePath)
+                    projectRoot = sourceFileURL.deletingLastPathComponent().deletingLastPathComponent()
+                }
             }
             process.currentDirectoryURL = projectRoot
         }
