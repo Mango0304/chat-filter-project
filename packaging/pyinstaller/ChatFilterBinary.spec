@@ -5,20 +5,32 @@ import os
 SPEC_DIR = os.path.abspath(globals().get("SPECPATH", os.getcwd()))
 PROJECT_DIR = os.path.abspath(os.path.join(SPEC_DIR, "..", ".."))
 
+block_cipher = None
+
 a = Analysis(
-    [os.path.join(PROJECT_DIR, 'core', 'chat_filter.py')],
-    pathex=[PROJECT_DIR, os.path.join(PROJECT_DIR, 'core')],
+    [os.path.join(SPEC_DIR, 'startup.py')],
+    pathex=[PROJECT_DIR],
     binaries=[],
-    datas=[],
-    hiddenimports=[],
+    datas=[
+        (os.path.join(PROJECT_DIR, 'core'), 'core'),
+        (os.path.join(PROJECT_DIR, 'resources', 'fonts'), 'fonts'),
+    ],
+    hiddenimports=[
+        'core.file_reader',
+        'core.parser',
+        'core.matcher',
+        'core.exporter',
+        'core.chat_filter',
+    ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[],
+    cipher=block_cipher,
     noarchive=False,
-    optimize=0,
 )
-pyz = PYZ(a.pure)
+
+pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
 exe = EXE(
     pyz,
@@ -30,6 +42,8 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
+    upx_exclude=[],
+    runtime_tmpdir=None,
     console=True,
     disable_windowed_traceback=False,
     argv_emulation=False,
@@ -37,9 +51,11 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
 )
+
 coll = COLLECT(
     exe,
     a.binaries,
+    a.zipfiles,
     a.datas,
     strip=False,
     upx=True,

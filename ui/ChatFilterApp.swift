@@ -7,6 +7,5 @@ struct ChatFilterApp: App {
             ContentView()
         }
         .windowStyle(.hiddenTitleBar)
-        .windowResizability(.contentSize)
     }
 }

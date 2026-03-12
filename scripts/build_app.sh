@@ -1,5 +1,5 @@
 #!/bin/bash
-# 构建 macOS App 包
+# 构建可分发的 macOS 成品（内置 Python 运行时）
 
 set -euo pipefail
 
@@ -7,61 +7,79 @@ APP_NAME="ChatFilter"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 DIST_DIR="$PROJECT_DIR/dist"
-BUILD_DIR="$DIST_DIR/$APP_NAME.app"
-STARTUP_SCRIPT="$PROJECT_DIR/packaging/pyinstaller/startup.py"
+PYINSTALLER_SPEC="$PROJECT_DIR/packaging/pyinstaller/ChatFilterBinary.spec"
+XCODE_PROJECT="$PROJECT_DIR/ui/ChatFilter.xcodeproj"
+STAMP="$(date +%Y%m%d-%H%M%S)"
+BUILD_ROOT="$PROJECT_DIR/build/release-$STAMP"
+DERIVED_DATA_DIR="$BUILD_ROOT/xcode"
+RELEASE_DIR="$DIST_DIR/release-$STAMP"
+APP_BUILD_PATH="$DERIVED_DATA_DIR/Build/Products/Release/${APP_NAME}.app"
+APP_RELEASE_PATH="$RELEASE_DIR/${APP_NAME}.app"
+DMG_STAGE_DIR="$BUILD_ROOT/dmg"
+DMG_PATH="$RELEASE_DIR/${APP_NAME}.dmg"
+ZIP_PATH="$RELEASE_DIR/${APP_NAME}.zip"
+FIRST_LAUNCH_NOTE="$PROJECT_DIR/packaging/First Launch Instructions.txt"
+export PYINSTALLER_CONFIG_DIR="$BUILD_ROOT/pyinstaller-config"
 
-if [[ ! -d "$DIST_DIR/ChatFilterBinary" ]]; then
-  echo "错误: 未找到 $DIST_DIR/ChatFilterBinary，请先运行 PyInstaller 打包。"
+mkdir -p "$BUILD_ROOT"
+mkdir -p "$RELEASE_DIR"
+mkdir -p "$PYINSTALLER_CONFIG_DIR"
+
+echo "==> Building bundled CLI binary with PyInstaller"
+python3 -m PyInstaller "$PYINSTALLER_SPEC" \
+  --noconfirm \
+  --clean \
+  --distpath "$DIST_DIR" \
+  --workpath "$BUILD_ROOT/pyinstaller"
+
+if [[ ! -x "$DIST_DIR/ChatFilterBinary/ChatFilterBinary" ]]; then
+  echo "错误: PyInstaller 产物不存在: $DIST_DIR/ChatFilterBinary/ChatFilterBinary"
   exit 1
 fi
 
-# 清理旧构建
-rm -rf "$BUILD_DIR"
+echo "==> Building SwiftUI app bundle"
+xcodebuild \
+  -project "$XCODE_PROJECT" \
+  -scheme "$APP_NAME" \
+  -configuration Release \
+  -derivedDataPath "$DERIVED_DATA_DIR" \
+  CODE_SIGNING_ALLOWED=NO \
+  build
 
-# 创建 app bundle 结构
-mkdir -p "$BUILD_DIR/Contents/MacOS"
-mkdir -p "$BUILD_DIR/Contents/Resources"
+if [[ ! -d "$APP_BUILD_PATH" ]]; then
+  echo "错误: Xcode 未生成 app bundle: $APP_BUILD_PATH"
+  exit 1
+fi
 
-# 复制打包的 Python（从现有 dist）
-cp -R "$DIST_DIR/ChatFilterBinary/_internal" "$BUILD_DIR/Contents/Resources/"
+echo "==> Copying release app"
+ditto "$APP_BUILD_PATH" "$APP_RELEASE_PATH"
 
-# 复制 Python 可执行文件
-cp "$DIST_DIR/ChatFilterBinary/ChatFilterBinary" "$BUILD_DIR/Contents/MacOS/ChatFilter"
+echo "==> Creating ZIP archive"
+ditto -c -k --sequesterRsrc --keepParent "$APP_RELEASE_PATH" "$ZIP_PATH"
 
-# 复制资源文件
-cp -R "$PROJECT_DIR/core" "$BUILD_DIR/Contents/Resources/"
-cp "$STARTUP_SCRIPT" "$BUILD_DIR/Contents/Resources/startup.py"
+echo "==> Preparing DMG staging folder"
+mkdir -p "$DMG_STAGE_DIR"
+ditto "$APP_RELEASE_PATH" "$DMG_STAGE_DIR/${APP_NAME}.app"
+ln -s /Applications "$DMG_STAGE_DIR/Applications"
+cp "$FIRST_LAUNCH_NOTE" "$DMG_STAGE_DIR/"
 
-# 创建 Info.plist
-cat > "$BUILD_DIR/Contents/Info.plist" << 'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>CFBundleExecutable</key>
-    <string>ChatFilter</string>
-    <key>CFBundleIdentifier</key>
-    <string>com.chatfilter.app</string>
-    <key>CFBundleName</key>
-    <string>ChatFilter</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
-    <key>CFBundleVersion</key>
-    <string>1</string>
-    <key>LSMinimumSystemVersion</key>
-    <string>10.15</string>
-    <key>NSPrincipalClass</key>
-    <string>NSApplication</string>
-    <key>LSUIElement</key>
-    <false/>
-</dict>
-</plist>
-EOF
+echo "==> Creating DMG archive"
+if hdiutil create \
+  -volname "$APP_NAME" \
+  -srcfolder "$DMG_STAGE_DIR" \
+  -ov \
+  -format UDZO \
+  "$DMG_PATH"; then
+  DMG_STATUS="ok"
+else
+  DMG_STATUS="failed"
+  echo "警告: DMG 创建失败，已保留 APP 和 ZIP 成品。"
+fi
 
-echo "App bundle created: $BUILD_DIR"
-echo "Contents:"
-ls -la "$BUILD_DIR/Contents/"
-ls -la "$BUILD_DIR/Contents/MacOS/"
-ls -la "$BUILD_DIR/Contents/Resources/" | head -10
+echo
+echo "构建完成:"
+echo "APP: $APP_RELEASE_PATH"
+echo "ZIP: $ZIP_PATH"
+if [[ "${DMG_STATUS:-failed}" == "ok" ]]; then
+  echo "DMG: $DMG_PATH"
+fi

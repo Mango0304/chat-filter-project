@@ -62,8 +62,7 @@ struct ContentView: View {
                 GroupBox {
                     VStack(alignment: .leading, spacing: 12) {
                         Label("输入文件", systemImage: "doc.badge.arrow.up")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
+                            .font(.system(size: 13, weight: .semibold))
 
                         HStack {
                             TextField("选择聊天HTML文件", text: $viewModel.inputFilePath)
@@ -86,8 +85,7 @@ struct ContentView: View {
                 GroupBox {
                     VStack(alignment: .leading, spacing: 12) {
                         Label("关键词", systemImage: "text.magnifyingglass")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
+                            .font(.system(size: 13, weight: .semibold))
 
                         TextField("输入关键词，用逗号分隔", text: $viewModel.keywords)
                             .textFieldStyle(.roundedBorder)
@@ -104,8 +102,7 @@ struct ContentView: View {
                 GroupBox {
                     VStack(alignment: .leading, spacing: 12) {
                         Label("匹配模式", systemImage: "slider.horizontal.3")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
+                            .font(.system(size: 13, weight: .semibold))
 
                         Picker("匹配模式", selection: $viewModel.matchMode) {
                             Text("模糊匹配").tag(MatchMode.fuzzy)
@@ -125,8 +122,7 @@ struct ContentView: View {
                 GroupBox {
                     VStack(alignment: .leading, spacing: 12) {
                         Label("匹配规则", systemImage: "arrow.triangle.branch")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
+                            .font(.system(size: 13, weight: .semibold))
 
                         Picker("匹配规则", selection: $viewModel.matchRule) {
                             Text("任意匹配").tag(MatchRule.any)
@@ -146,8 +142,7 @@ struct ContentView: View {
                 GroupBox {
                     VStack(alignment: .leading, spacing: 12) {
                         Label("输出文件", systemImage: "square.and.arrow.down")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
+                            .font(.system(size: 13, weight: .semibold))
 
                         HStack {
                             TextField("输出文件路径", text: $viewModel.outputFilePath)
@@ -204,8 +199,7 @@ struct ContentView: View {
             // Results header
             HStack {
                 Label("执行日志", systemImage: "terminal")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
+                    .font(.system(size: 13, weight: .semibold))
                 
                 Spacer()
                 
@@ -326,8 +320,4 @@ struct SummaryItem: View {
                 .lineLimit(1)
         }
     }
-}
-
-#Preview {
-    ContentView()
 }

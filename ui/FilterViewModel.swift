@@ -21,6 +21,13 @@ enum OutputFormat: String, CaseIterable {
 // MARK: - FilterViewModel
 @MainActor
 class FilterViewModel: ObservableObject {
+    private struct ProcessConfiguration {
+        let executableURL: URL
+        let arguments: [String]
+        let workingDirectoryURL: URL
+        let runtimeDescription: String
+    }
+
     // MARK: - Published Properties
     @Published var inputFilePath: String = ""
     @Published var keywords: String = ""
@@ -121,35 +128,46 @@ class FilterViewModel: ObservableObject {
         addLog("匹配模式: \(matchMode.rawValue), 匹配规则: \(matchRule.rawValue)")
         addLog("输出文件: \(outputFilePath)")
         addLog("---")
-        
-        // Build command arguments
-        let args = buildArguments()
-        
-        // Execute Python command
-        executePythonCommand(arguments: args)
+
+        let configuration = makeProcessConfiguration()
+        addLog("运行环境: \(configuration.runtimeDescription)")
+
+        executeCommand(configuration: configuration)
     }
-    
-    private func buildArguments() -> [String] {
-        var args: [String] = []
-        
-        args.append("-m")
-        args.append("core.chat_filter")
-        args.append("--input")
-        args.append(inputFilePath)
-        args.append("--keywords")
-        args.append(keywords)
-        args.append("--mode")
-        args.append(matchMode.rawValue)
-        args.append("--rule")
-        args.append(matchRule.rawValue)
-        args.append("--output")
-        args.append(outputFilePath)
-        args.append("--show-keywords")
-        
-        return args
+
+    private func buildCliArguments() -> [String] {
+        [
+            "--input", inputFilePath,
+            "--keywords", keywords,
+            "--mode", matchMode.rawValue,
+            "--rule", matchRule.rawValue,
+            "--output", outputFilePath,
+            "--show-keywords"
+        ]
     }
-    
-    private func executePythonCommand(arguments: [String]) {
+
+    private func makeProcessConfiguration() -> ProcessConfiguration {
+        let cliArguments = buildCliArguments()
+
+        if let bundledBinaryURL = getBundledBinaryURL() {
+            return ProcessConfiguration(
+                executableURL: bundledBinaryURL,
+                arguments: cliArguments,
+                workingDirectoryURL: bundledBinaryURL.deletingLastPathComponent(),
+                runtimeDescription: "应用内置运行时"
+            )
+        }
+
+        let projectRoot = resolveProjectRoot()
+        return ProcessConfiguration(
+            executableURL: URL(fileURLWithPath: "/usr/bin/python3"),
+            arguments: ["-m", "core.chat_filter"] + cliArguments,
+            workingDirectoryURL: projectRoot,
+            runtimeDescription: "系统 Python（开发环境）"
+        )
+    }
+
+    private func executeCommand(configuration: ProcessConfiguration) {
         let process = Process()
         let outputPipe = Pipe()
         let errorPipe = Pipe()
@@ -158,38 +176,9 @@ class FilterViewModel: ObservableObject {
         self.outputPipe = outputPipe
         self.errorPipe = errorPipe
 
-        // 判断是否在打包环境中运行
-        if let bundledInfo = getBundledPythonInfo() {
-            // 打包环境：使用打包的 Python + 正确的工作目录
-            process.executableURL = URL(fileURLWithPath: bundledInfo.pythonPath)
-            process.currentDirectoryURL = URL(fileURLWithPath: bundledInfo.workingDir)
-            // 使用原始参数 -m core.chat_filter
-            process.arguments = arguments
-        } else {
-            // 开发环境：使用系统Python
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
-            process.arguments = arguments
-            
-            // 动态获取项目根目录（支持开发和打包环境）
-            let projectRoot: URL
-            let mainBundlePath = Bundle.main.bundlePath
-            if mainBundlePath.hasSuffix(".app") {
-                // 打包环境：从 app 位置推断项目目录
-                // /path/to/AppName.app/Contents/MacOS/xxx -> /path/to/
-                let appURL = URL(fileURLWithPath: mainBundlePath)
-                let contentsURL = appURL.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-                projectRoot = contentsURL
-            } else {
-                // Xcode开发环境：优先读取环境变量，否则基于当前源文件路径推断仓库根目录
-                if let envRoot = ProcessInfo.processInfo.environment["CHAT_FILTER_PROJECT_ROOT"], !envRoot.isEmpty {
-                    projectRoot = URL(fileURLWithPath: envRoot)
-                } else {
-                    let sourceFileURL = URL(fileURLWithPath: #filePath)
-                    projectRoot = sourceFileURL.deletingLastPathComponent().deletingLastPathComponent()
-                }
-            }
-            process.currentDirectoryURL = projectRoot
-        }
+        process.executableURL = configuration.executableURL
+        process.arguments = configuration.arguments
+        process.currentDirectoryURL = configuration.workingDirectoryURL
 
         process.standardOutput = outputPipe
         process.standardError = errorPipe
@@ -222,7 +211,7 @@ class FilterViewModel: ObservableObject {
         do {
             try process.run()
         } catch {
-            addLog("错误: 无法启动Python进程 - \(error.localizedDescription)")
+            addLog("错误: 无法启动处理进程 - \(error.localizedDescription)")
             isProcessing = false
         }
     }
@@ -303,7 +292,7 @@ class FilterViewModel: ObservableObject {
         } else {
             addLog("---")
             addLog("筛选失败，退出码: \(exitCode)")
-            errorMessage = "Python进程异常退出，退出码: \(exitCode)"
+            errorMessage = "处理进程异常退出，退出码: \(exitCode)"
             showError = true
         }
         
@@ -323,58 +312,29 @@ class FilterViewModel: ObservableObject {
         isCompleted = false
     }
 
-    // MARK: - Bundled Python Detection
-    private func getBundledPythonInfo() -> (pythonPath: String, workingDir: String)? {
-        // 检测是否在Xcode打包环境中运行
-        let envVars = ProcessInfo.processInfo.environment
-        
-        // 方法1: 检查Bundle路径（打包后的 app）
-        if let bundlePath = Bundle.main.bundlePath as NSString?, bundlePath.pathExtension == "app" {
-            let appDir = bundlePath.deletingLastPathComponent
-            let macOSPath = (appDir as NSString).deletingLastPathComponent
-            let resourcesPath = (macOSPath as NSString).deletingLastPathComponent
-            
-            // 检查 _internal/Python3.framework 打包的 Python
-            let pythonFrameworkPath = "\(resourcesPath)/Contents/Resources/_internal/Python3.framework/Versions/3.9/Python3"
-            let internalPath = "\(resourcesPath)/Contents/Resources/_internal"
-            
-            if FileManager.default.fileExists(atPath: pythonFrameworkPath) {
-                // 使用打包的 Python + _internal 作为工作目录
-                return (pythonPath: pythonFrameworkPath, workingDir: internalPath)
-            }
-            
-            // 也检查 Contents/MacOS 下的启动器
-            let launcherPath = "\(appDir)/Contents/MacOS/ChatFilter"
-            if FileManager.default.fileExists(atPath: launcherPath) {
-                return (pythonPath: launcherPath, workingDir: resourcesPath + "/Contents/Resources")
-            }
+    // MARK: - Runtime Resolution
+    private func getBundledBinaryURL() -> URL? {
+        guard let executableDirectory = Bundle.main.executableURL?.deletingLastPathComponent() else {
+            return nil
         }
 
-        // 方法2: 检查是否是直接运行打包的二进制
-        let executablePath = CommandLine.arguments[0]
-        if executablePath.contains("ChatFilterBinary") || executablePath.contains("ChatFilter.app") {
-            let appDir = (executablePath as NSString).deletingLastPathComponent
-            let resourcesPath = (appDir as NSString).deletingLastPathComponent
-            let internalPath = "\(resourcesPath)/Contents/Resources/_internal"
-            
-            if FileManager.default.fileExists(atPath: internalPath) {
-                let pythonPath = "\(internalPath)/Python3.framework/Versions/3.9/Python3"
-                if FileManager.default.fileExists(atPath: pythonPath) {
-                    return (pythonPath: pythonPath, workingDir: internalPath)
-                }
-            }
+        let candidate = executableDirectory
+            .appendingPathComponent("ChatFilterBinary", isDirectory: true)
+            .appendingPathComponent("ChatFilterBinary", isDirectory: false)
+
+        guard FileManager.default.isExecutableFile(atPath: candidate.path) else {
+            return nil
         }
 
-        // 方法3: Xcode 开发环境
-        if envVars["XCODE_RUNNING"] != nil || envVars["XPC_SERVICE_NAME"] != nil {
-            if let productDir = envVars["BUILT_PRODUCTS_DIR"] {
-                let xcodePath = "\(productDir)/ChatFilter.app/Contents/MacOS/ChatFilter"
-                if FileManager.default.fileExists(atPath: xcodePath) {
-                    return (pythonPath: xcodePath, workingDir: productDir)
-                }
-            }
+        return candidate
+    }
+
+    private func resolveProjectRoot() -> URL {
+        if let envRoot = ProcessInfo.processInfo.environment["CHAT_FILTER_PROJECT_ROOT"], !envRoot.isEmpty {
+            return URL(fileURLWithPath: envRoot)
         }
 
-        return nil
+        let sourceFileURL = URL(fileURLWithPath: #filePath)
+        return sourceFileURL.deletingLastPathComponent().deletingLastPathComponent()
     }
 }

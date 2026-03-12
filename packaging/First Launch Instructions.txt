@@ -1,0 +1,12 @@
+ChatFilter 首次打开说明
+
+1. 将 ChatFilter.app 拖到“应用程序”文件夹。
+2. 第一次打开时，如果 macOS 提示“无法验证开发者”：
+   - 按住 Control 键点按 ChatFilter.app
+   - 选择“打开”
+   - 在弹窗中再次点“打开”
+3. 之后就可以像普通软件一样直接双击使用。
+
+说明：
+- 这个版本已经内置运行环境，不需要安装 Python、Xcode 或其他开发工具。
+- 当前构建产物适用于 Apple Silicon（M 系列）Mac。
